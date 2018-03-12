@@ -35,15 +35,15 @@ def fill_batch_entry(left_label, right_label, generators, target_shape):
 
     # Left.
     left_image, _ = next(generators[left_label])
-    left_image = left_image.reshape(target_shape)
+    left_image = left_image.reshape(target_shape) - 0.5
 
     # Right.
     right_image, _ = next(generators[right_label])
-    right_image = right_image.reshape(target_shape)
+    right_image = right_image.reshape(target_shape) - 0.5
 
     # Similarity.
     is_same = 1.0 if left_label == right_label else 0.0
-    return left_image, right_image, is_same
+    return left_image.astype(np.float32), right_image.astype(np.float32), is_same
 
 
 def get_different_pairs(batch_size, amount_classes):
@@ -55,7 +55,9 @@ def get_different_pairs(batch_size, amount_classes):
     pairs = all_pair_combinations.copy()
     for _ in range(amount_repeats - 1):
         pairs = np.concatenate((pairs,  all_pair_combinations))
-    return np.concatenate((pairs,  all_pair_combinations[:remainder]))
+    all_pairs = np.concatenate((pairs,  all_pair_combinations[:remainder]))
+    max_allowed = batch_size // 2
+    return np.random.permutation(all_pairs)[:max_allowed]
 
 
 def test_image_arrays(*args):
@@ -64,7 +66,8 @@ def test_image_arrays(*args):
         assert not np.isnan(array).any()
 
         assert np.max(array) <= 1.0
-        assert np.min(array) >= 0.0
+        assert np.min(array) >= -1.0
+        assert array.dtype == np.float32, '{}'.format(array.dtype)
 
         for element in array:
             assert np.mean(element) != 0
@@ -84,28 +87,26 @@ def next_batch(batch_size,
     # How many classes do we have?
     amount_classes = len(generators)
 
-    # Index calculations.
-    different_pairs = get_different_pairs(batch_size, amount_classes)
-    amount_same_pairs = batch_size // 2
-
     # Initialise state.
-    left_images = np.zeros((batch_size,) + target_shape)
-    right_images = np.zeros((batch_size,) + target_shape)
-    is_similar = np.zeros((batch_size, 1))
+    left_images = np.zeros((batch_size,) + target_shape, np.float32)
+    right_images = np.zeros((batch_size,) + target_shape, np.float32)
+    is_similar = np.zeros((batch_size, 1), np.float32)
 
     # Similar pairs.
     left_labels = np.arange(batch_size) % amount_classes
     right_labels = np.arange(batch_size) % amount_classes
-
-    # Different pairs.
-    left_labels[amount_same_pairs:] = different_pairs.T[0]
-    right_labels[amount_same_pairs:] = different_pairs.T[1]
-
-    # Indices for the arrays.
-    indices = np.arange(batch_size)
-    containers = zip(indices, left_labels, right_labels)
+    amount_same_pairs = batch_size // 2
 
     while True:
+
+        # Index calculations for differnt pairs.
+        different_pairs = get_different_pairs(batch_size, amount_classes)
+        left_labels[amount_same_pairs:] = different_pairs.T[0]
+        right_labels[amount_same_pairs:] = different_pairs.T[1]
+
+        # Indices for the arrays.
+        indices = np.arange(batch_size)
+        containers = zip(indices, left_labels, right_labels)
 
         for index, left_label, right_label in containers:
 
@@ -135,6 +136,7 @@ def load_data_from_directory(data_directory, target_shape, grayscale):
 
     class_directories = os.listdir(data_directory)
     class_number = 0
+    labels_to_class_list = []
 
     for class_directory in class_directories:
 
@@ -156,8 +158,10 @@ def load_data_from_directory(data_directory, target_shape, grayscale):
                 labels.append(class_number)
 
         class_number += 1
+        labels_to_class_list.append(class_directory)
 
-    images = np.array(images) / 255.0
+    images = np.array(images) / 255.0 - 0.5
+
     labels = np.array(labels)
 
-    return images, labels
+    return images, labels, labels_to_class_list

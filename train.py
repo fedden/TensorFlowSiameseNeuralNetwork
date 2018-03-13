@@ -1,102 +1,86 @@
-import os
-import shutil
-import traceback
 import numpy as np
-import matplotlib.pyplot as plt
-from model import SiameseNetwork
-from matplotlib.colors import hsv_to_rgb
-from dataset import next_batch, load_data_from_directory, unison_shuffle
+from model import SiameseModel
+from dataset import next_batch, get_testing_batches
+from utils import plot_embedding, plot_loss
+from utils import get_markers_and_colours, setup_working_directory
 
 
-dataset_folder = './sign_dataset/'
+dataset_directory = 'sign_dataset'
+save_directory = 'saves'
+plot_directory = 'plots'
 
 embedding_size = 2
-
-training_iterations = 5000
-save_step = 100
+margin = 0.2
+learning_rate = 0.01
 batch_size = 64
+training_iterations = 20000
+save_step = 100
+amount_plots = 1
+amount_test_batches = 18
 
-image_height = 48
-image_width = 48
+# Create folders to save models and plots.
+setup_working_directory(amount_plots, 
+                        plot_directory, 
+                        save_directory)
+
+# Produce H, W, C images that the model will convert.
+image_height = 224
+image_width = 224
 image_channels = 3
+image_shape = (image_height, image_width, image_channels)
 
-amount_test_batches = 20
-amount_test_images = batch_size * amount_test_batches
+# Get a testing set of batches for plotting.
+test_images, test_labels, labels_to_class_list = \
+    get_testing_batches(dataset_directory, 
+                        image_shape,
+                        amount_test_batches, 
+                        batch_size)
+    
+amount_classes = len(np.unique(test_labels))
 
-# Create the output directory.
-shutil.rmtree('plots', ignore_errors=True)
-os.makedirs('plots')
-try:
-    os.remove('train.log')
-except OSError:
-    pass
+# The infinite online training batch generator.
+batch_generator = next_batch(batch_size,
+                             data_directory=dataset_directory,
+                             target_shape=image_shape, 
+                             probability=0.1)
+# The siamese model.
+model = SiameseModel(input_image_shape=image_shape,
+                     output_size=embedding_size,
+                     margin=margin,
+                     learning_rate=learning_rate)
 
-target_shape = (image_height, image_width, image_channels)
+# Optimisation / visualisation process.
+loss_history = []
+step_history = []
+for step, batch in enumerate(batch_generator):
 
-images, labels, labels_to_class_list = \
-    load_data_from_directory(data_directory=dataset_folder,
-                             target_shape=target_shape,
-                             grayscale=False)
-amount_classes = len(np.unique(labels))
+    # Generate test embedding plots.
+    if step % save_step == 0:
+        print("\ntesting.")
+        
+        # Plot training loss.
+        if len(loss_history) > 0: 
+            plot_loss(loss_history, step_history)
 
-images, labels = unison_shuffle(images, labels)
-test_images = images[:amount_test_images]
-test_labels = labels[:amount_test_images]
-test_shape = (amount_test_batches, batch_size) + target_shape
-test_images = test_images.reshape(test_shape)
-del images
-del labels
+        embedding = np.array([model.inference(b) for b in test_images])
+        embedding = embedding.reshape((-1, embedding_size))
+        
+        # Create some plots from the embeddings.
+        for plot_number in range(amount_plots):
+            plot_embedding(amount_classes, 
+                           labels_to_class_list, 
+                           embedding,
+                           test_labels, 
+                           plot_number,
+                           step)
+        model.save(save_directory)
+        
+    # Training.
+    batch_left, batch_right, batch_similar = batch
+    loss = model.optimise_batch(*batch)
+    
+    # Append loss and step to history.
+    loss_history.append(loss)
+    step_history.append(step * batch_size)
 
-colours = []
-for i in range(amount_classes):
-    hsv = tuple(hsv_to_rgb([i / amount_classes, 1, 1]))
-    colours.append(hsv)
-
-marker_styles = ['.', 'o', '^', 's', 'p', '*', '+', 'x', 'D']
-
-try:
-    network = SiameseNetwork(input_image_shape=target_shape,
-                             output_encoding_size=embedding_size)
-
-    batch_generator = next_batch(batch_size,
-                                 data_directory=dataset_folder,
-                                 target_shape=target_shape, probability=0.1)
-
-    for i, batch in enumerate(batch_generator):
-
-        batch_left, batch_right, batch_similar = batch
-        loss = network.optimise(batch_left, batch_right, batch_similar)
-
-        print("loss: {}".format(loss))
-
-        # Generate test embedding plots.
-        if i % save_step == 0:
-            print("testing.")
-
-            embedding = np.array([network.inference(b) for b in test_images])
-            embedding = embedding.reshape((-1, embedding_size))
-
-            # plot result
-            plt.figure(figsize=(16, 9))
-            for j in range(amount_classes):
-                xs = embedding[test_labels == j, 0].flatten()
-                ys = embedding[test_labels == j, 1].flatten()
-                marker_index = j % len(marker_styles)
-                plt.plot(xs, ys,
-                         marker_styles[marker_index],
-                         c=colours[j],
-                         alpha=0.8)
-
-            plt.legend(labels_to_class_list)
-            plt.savefig('plots/{}.jpg'.format(i))
-
-    network.save()
-
-except Exception as error:
-    print("\nerror:\n", error)
-    traceback.print_exc()
-    network.close()
-
-else:
-    network.close()
-    print("Done.")
+    print("loss: {}".format(loss), end='\r')

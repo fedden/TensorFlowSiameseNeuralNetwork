@@ -2,7 +2,7 @@ import numpy as np
 import os
 import Augmentor
 from itertools import combinations
-from tensorflow.contrib.keras import preprocessing
+from utils import img_to_array, load_img, unison_shuffle
 
 
 def build_class_generator(class_path, probability, width, height):
@@ -123,12 +123,6 @@ def next_batch(batch_size,
         yield left_images, right_images, is_similar
 
 
-def unison_shuffle(a, b):
-    assert len(a) == len(b)
-    p = np.random.permutation(len(a))
-    return a[p], b[p]
-
-
 def load_data_from_directory(data_directory, target_shape, grayscale):
 
     images = []
@@ -149,10 +143,10 @@ def load_data_from_directory(data_directory, target_shape, grayscale):
             if file_name.endswith('.png'):
 
                 file_path = os.path.join(class_path, file_name)
-                image = preprocessing.image.load_img(file_path,
-                                                     target_size=target_shape,
-                                                     grayscale=grayscale)
-                image = preprocessing.image.img_to_array(image)
+                image = load_img(file_path, 
+                                 target_size=target_shape, 
+                                 grayscale=grayscale)
+                image = img_to_array(image)
                 images.append(image)
 
                 labels.append(class_number)
@@ -165,3 +159,18 @@ def load_data_from_directory(data_directory, target_shape, grayscale):
     labels = np.array(labels)
 
     return images, labels, labels_to_class_list
+
+
+def get_testing_batches(dataset_folder, target_shape, amount_test_batches, batch_size):
+    images, labels, labels_to_class_list = \
+        load_data_from_directory(data_directory=dataset_folder,
+                                 target_shape=target_shape,
+                                 grayscale=False)
+        
+    amount_test_images = batch_size * amount_test_batches
+    images, labels = unison_shuffle(images, labels)
+    test_images = images[:amount_test_images]
+    test_labels = labels[:amount_test_images]
+    test_shape = (amount_test_batches, batch_size) + target_shape
+    test_images = test_images.reshape(test_shape)
+    return test_images, test_labels, labels_to_class_list

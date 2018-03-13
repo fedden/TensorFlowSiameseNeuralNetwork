@@ -4,6 +4,9 @@
 MNIST_data/*
 .ipynb_checkpoints/*
 *.png
+*.tar
+*.jpg
+*.jpeg
 *.mp4
 signs/
 

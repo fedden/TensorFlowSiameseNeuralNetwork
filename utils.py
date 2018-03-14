@@ -56,7 +56,7 @@ def setup_working_directory(amount_plots,
         os.makedirs(save_directory)
         
     for i in range(amount_plots):
-        os.makedirs(os.path.join(plot_directory, str(i))
+        os.makedirs(os.path.join(plot_directory, str(i)))
     
     
 def to_var(x):

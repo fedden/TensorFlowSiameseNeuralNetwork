@@ -1,3 +1,4 @@
+import os
 import shutil
 import torch
 import torch.nn as nn
@@ -17,6 +18,7 @@ class SiameseModel(object):
                  momentum=0.9):
         
         self.target_shape = input_image_shape
+        self.embedding_size = output_size
         
         # Load the model and nn modules.
         if torch.cuda.is_available():
@@ -85,7 +87,7 @@ class SiameseModel(object):
             'optimiser': self.optimiser.state_dict()
         }
         state_path = os.path.join(path, 'model.pth.tar')
-        torch.save(state, path)
+        torch.save(state, state_path)
         
         if is_best:
             best_path = os.path.join(path, 'model_best.pth.tar')

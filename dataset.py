@@ -161,7 +161,7 @@ def load_data_from_directory(data_directory, target_shape, grayscale):
     return images, labels, labels_to_class_list
 
 
-def get_testing_batches(dataset_folder, target_shape, amount_test_batches, batch_size):
+def get_image_label_batches(dataset_folder, target_shape, amount_test_batches, batch_size):
     images, labels, labels_to_class_list = \
         load_data_from_directory(data_directory=dataset_folder,
                                  target_shape=target_shape,
